@@ -1,1 +1,2 @@
-"""ASI01: Goal Hijack — EchoLeak, Operator, Inception attacks"""
+"""OWASP ASI01: Agent Goal Hijack — Full red team simulation module for Kevlar."""
+from .goal_hijack_orchestrator import GoalHijackOrchestrator
