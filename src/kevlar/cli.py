@@ -7,9 +7,11 @@ Red Team Tool for AI Agent Security Testing
 import json
 import logging
 import os
+import signal
+import sys
 import time
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from kevlar.agents import MockCopilotAgent, RealLangChainAgent
 from kevlar.modules.critical.asi01_goal_hijack import GoalHijackOrchestrator
@@ -43,6 +45,61 @@ COLORS = {
 }
 
 
+class ShutdownHandler:
+    """Handles graceful shutdown on SIGINT/SIGTERM."""
+
+    def __init__(self):
+        self.shutdown_requested = False
+        self.current_asi: Optional[str] = None
+        self.results: Dict[str, Any] = {}
+        self.agent_mode: Optional[str] = None
+        self._original_sigint = None
+        self._original_sigterm = None
+
+    def install(self):
+        """Install signal handlers."""
+        self._original_sigint = signal.signal(signal.SIGINT, self._handle_signal)
+        self._original_sigterm = signal.signal(signal.SIGTERM, self._handle_signal)
+
+    def uninstall(self):
+        """Restore original signal handlers."""
+        if self._original_sigint is not None:
+            signal.signal(signal.SIGINT, self._original_sigint)
+        if self._original_sigterm is not None:
+            signal.signal(signal.SIGTERM, self._original_sigterm)
+
+    def _handle_signal(self, signum: int, frame):
+        """Handle shutdown signal."""
+        signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
+
+        if self.shutdown_requested:
+            print(
+                f"\n{COLORS['RED']}{COLORS['BOLD']}Force shutdown requested. Exiting immediately.{COLORS['RESET']}"
+            )
+            sys.exit(1)
+
+        self.shutdown_requested = True
+        print(
+            f"\n{COLORS['YELLOW']}{COLORS['BOLD']}Shutdown requested ({signal_name}). "
+            f"Finishing current test...{COLORS['RESET']}"
+        )
+        print(
+            f"{COLORS['YELLOW']}Press Ctrl+C again to force quit.{COLORS['RESET']}"
+        )
+
+    def save_partial_results(self):
+        """Save partial results if any tests were completed."""
+        if self.results and self.agent_mode:
+            print(
+                f"\n{COLORS['CYAN']}Saving partial results...{COLORS['RESET']}"
+            )
+            return generate_aivss_report(self.results, self.agent_mode, partial=True)
+        return None
+
+
+shutdown_handler = ShutdownHandler()
+
+
 def print_banner():
     banner = f"""
 
@@ -59,7 +116,7 @@ def print_banner():
 
 {COLORS["WHITE"]}{COLORS["BOLD"]}Kevlar: OWASP Top 10 for Agentic Apps 2026 Benchmark{COLORS["RESET"]}
 {COLORS["CYAN"]}A Red Team Tool for AI Agent Security Testing{COLORS["RESET"]}
-{COLORS["YELLOW"]}Version 1.0 | MIT License | Author: toxy4ny{COLORS["RESET"]}
+{COLORS["YELLOW"]}Version 1.1 | MIT License | Author: toxy4ny{COLORS["RESET"]}
 {COLORS["WHITE"]}https://github.com/toxy4ny/kevlar-benchmark{COLORS["RESET"]}
 """
     print(banner)
@@ -236,12 +293,12 @@ def run_asi_test(asi_id: str, agent, results: Dict[str, Any]):
         results[asi_id] = {"error": str(e), "duration": time.time() - start_time}
 
 
-def generate_aivss_report(results: Dict[str, Any], agent_mode: str):
+def generate_aivss_report(results: Dict[str, Any], agent_mode: str, partial: bool = False):
     report = {
         "aivss_version": "1.0",
         "benchmark": {
             "name": "Kevlar",
-            "version": "1.0",
+            "version": "1.1",
             "url": "https://github.com/toxy4ny/kevlar-benchmark",
         },
         "agent": {
@@ -301,9 +358,11 @@ def generate_aivss_report(results: Dict[str, Any], agent_mode: str):
     report["scan"]["critical_vulnerabilities"] = critical_vulns
     report["scan"]["high_vulnerabilities"] = high_vulns
     report["scan"]["medium_vulnerabilities"] = medium_vulns
+    report["scan"]["partial"] = partial
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"reports/kevlar_aivss_report_{timestamp}.json"
+    suffix = "_partial" if partial else ""
+    filename = f"reports/kevlar_aivss_report_{timestamp}{suffix}.json"
     os.makedirs("reports", exist_ok=True)
 
     with open(filename, "w") as f:
@@ -321,36 +380,66 @@ def generate_aivss_report(results: Dict[str, Any], agent_mode: str):
 
 def main():
     """Main entry point for Kevlar CLI."""
-    print_banner()
+    shutdown_handler.install()
 
-    selected_asis = select_asis()
-    print(
-        f"\n{COLORS['GREEN']}Selected ASI: {', '.join(selected_asis)}{COLORS['RESET']}"
-    )
+    try:
+        print_banner()
 
-    mode = select_mode()
-    agent = create_agent(mode)
+        selected_asis = select_asis()
+        print(
+            f"\n{COLORS['GREEN']}Selected ASI: {', '.join(selected_asis)}{COLORS['RESET']}"
+        )
 
-    results = {}
-    print(
-        f"\n{COLORS['YELLOW']}{COLORS['BOLD']}Starting Kevlar Scan...{COLORS['RESET']}"
-    )
+        mode = select_mode()
+        shutdown_handler.agent_mode = mode
+        agent = create_agent(mode)
 
-    for asi_id in selected_asis:
-        run_asi_test(asi_id, agent, results)
+        results = {}
+        shutdown_handler.results = results
+        print(
+            f"\n{COLORS['YELLOW']}{COLORS['BOLD']}Starting Kevlar Scan...{COLORS['RESET']}"
+        )
 
-    report_file = generate_aivss_report(results, mode)
+        for asi_id in selected_asis:
+            if shutdown_handler.shutdown_requested:
+                print(
+                    f"\n{COLORS['YELLOW']}Skipping remaining tests due to shutdown request.{COLORS['RESET']}"
+                )
+                break
 
-    print(
-        f"\n{COLORS['MAGENTA']}{COLORS['BOLD']}Kevlar Scan Complete!{COLORS['RESET']}"
-    )
-    print(f"{COLORS['WHITE']}Report saved to: {report_file}{COLORS['RESET']}")
-    print(
-        f"{COLORS['CYAN']}Thank you for using Kevlar - Red Team Tool for AI Agent Security{COLORS['RESET']}"
-    )
-    print(
-        f"{COLORS['WHITE']}Run 'kevlar' again to test more agents or different ASI combinations{COLORS['RESET']}"
-    )
+            shutdown_handler.current_asi = asi_id
+            run_asi_test(asi_id, agent, results)
+
+        if shutdown_handler.shutdown_requested:
+            report_file = shutdown_handler.save_partial_results()
+            print(
+                f"\n{COLORS['YELLOW']}{COLORS['BOLD']}Kevlar Scan Interrupted.{COLORS['RESET']}"
+            )
+            if report_file:
+                print(
+                    f"{COLORS['WHITE']}Partial report saved to: {report_file}{COLORS['RESET']}"
+                )
+        else:
+            report_file = generate_aivss_report(results, mode)
+            print(
+                f"\n{COLORS['MAGENTA']}{COLORS['BOLD']}Kevlar Scan Complete!{COLORS['RESET']}"
+            )
+            print(f"{COLORS['WHITE']}Report saved to: {report_file}{COLORS['RESET']}")
+
+        print(
+            f"{COLORS['CYAN']}Thank you for using Kevlar - Red Team Tool for AI Agent Security{COLORS['RESET']}"
+        )
+        print(
+            f"{COLORS['WHITE']}Run 'kevlar' again to test more agents or different ASI combinations{COLORS['RESET']}"
+        )
+
+    except KeyboardInterrupt:
+        print(
+            f"\n{COLORS['YELLOW']}Interrupted during setup.{COLORS['RESET']}"
+        )
+        sys.exit(130)
+    finally:
+        shutdown_handler.uninstall()
 
 
 if __name__ == "__main__":
