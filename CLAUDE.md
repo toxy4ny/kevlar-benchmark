@@ -63,8 +63,19 @@ uv run pytest tests/ -v --tb=short      # Verbose with short traceback
 | `--output PATH` | `-o` | Output report path. Default: reports/kevlar_aivss_report_<timestamp>.json. |
 | `--quiet` | `-q` | Suppress banner and colors. |
 | `--ci` | | CI mode: quiet + exit code based on severity. |
+| `--check` | | Check agent dependencies (LangChain, Ollama) and exit. |
 | `--version` | | Show version and exit. |
 | `--help` | | Show help and exit. |
+
+### Dependency Check
+
+Real agent mode (`--mode real`) requires LangChain and Ollama. Use `--check` to verify:
+
+```bash
+uv run kevlar --check
+```
+
+If dependencies are missing, `--mode real` will fail with a clear error message suggesting `--mode mock`.
 
 ### Exit Codes (CI Mode)
 

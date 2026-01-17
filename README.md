@@ -160,6 +160,17 @@ uv run kevlar --all --ci; echo "Exit code: $?"
 | 2 | Critical vulnerabilities found |
 | 130 | Interrupted (SIGINT) |
 
+### Dependency Check
+
+Real agent mode requires LangChain and Ollama. Check availability before running:
+
+```bash
+# Check if dependencies are available
+uv run kevlar --check
+```
+
+If dependencies are missing, `--mode real` will fail with a clear error suggesting `--mode mock`.
+
 ### All Options
 
 ```
@@ -170,6 +181,7 @@ uv run kevlar --all --ci; echo "Exit code: $?"
 -o, --output PATH       Output report path
 -q, --quiet             Suppress banner and colors
     --ci                CI mode: quiet + exit codes
+    --check             Check agent dependencies and exit
     --version           Show version
     --help              Show help
 ```
