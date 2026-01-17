@@ -26,5 +26,9 @@ requests>=2.31.0
 numpy>=1.24.0
 pandas>=2.0.0
 
+# HuggingFace Datasets (for payload diversity)
+datasets>=2.14.0
+huggingface-hub>=0.17.0
+
 # Development & Testing
 autopep8>=2.0.0
