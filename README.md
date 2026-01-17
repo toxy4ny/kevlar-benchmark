@@ -119,6 +119,63 @@ uv run scripts/run_asi10.py   # Rogue Agents
 
 ---
 
+## CLI Usage
+
+Kevlar supports both interactive and non-interactive modes.
+
+### Interactive Mode
+
+```bash
+uv run kevlar
+```
+
+### Non-Interactive Mode
+
+```bash
+# Run specific ASI tests
+uv run kevlar --asi ASI01 --asi ASI05 --mode mock
+
+# Run all tests with real agent
+uv run kevlar --all --mode real --model llama3.1
+
+# Custom output path with quiet mode
+uv run kevlar --asi ASI01 --output report.json --quiet
+```
+
+### CI/CD Integration
+
+```bash
+# CI mode: quiet output + exit codes based on severity
+uv run kevlar --all --ci
+
+# Check exit code
+uv run kevlar --all --ci; echo "Exit code: $?"
+```
+
+**Exit Codes:**
+| Code | Meaning |
+|------|---------|
+| 0 | No vulnerabilities found |
+| 1 | Medium/High vulnerabilities found |
+| 2 | Critical vulnerabilities found |
+| 130 | Interrupted (SIGINT) |
+
+### All Options
+
+```
+-a, --asi TEXT          ASI tests to run (can be repeated)
+    --all               Run all ASI tests
+-m, --mode [mock|real]  Agent mode (default: mock)
+    --model TEXT        Model for real agent (default: llama3.1)
+-o, --output PATH       Output report path
+-q, --quiet             Suppress banner and colors
+    --ci                CI mode: quiet + exit codes
+    --version           Show version
+    --help              Show help
+```
+
+---
+
 ## Testing
 
 ```bash

@@ -21,7 +21,17 @@ uv sync
 
 # Run full benchmark (interactive mode)
 uv run kevlar
-# Or: uv run -m kevlar.cli
+
+# Non-interactive mode with CLI arguments
+uv run kevlar --asi ASI01 --asi ASI05 --mode mock
+uv run kevlar --all --mode real --model llama3.1
+uv run kevlar --asi ASI01 --output report.json --quiet
+
+# CI mode (quiet + exit codes)
+uv run kevlar --all --ci
+
+# Show help
+uv run kevlar --help
 
 # Run individual ASI test scripts
 uv run scripts/run_asi01.py   # Agent Goal Hijack
@@ -41,6 +51,29 @@ uv run pytest tests/unit/               # Unit tests only
 uv run pytest tests/integration/        # Integration tests only
 uv run pytest tests/ -v --tb=short      # Verbose with short traceback
 ```
+
+## CLI Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--asi TEXT` | `-a` | ASI tests to run (e.g., ASI01, ASI05). Can be specified multiple times. |
+| `--all` | | Run all ASI tests. |
+| `--mode [mock\|real]` | `-m` | Agent mode: mock (safe) or real (LangChain + Ollama). Default: mock. |
+| `--model TEXT` | | Model name for real agent. Default: llama3.1. |
+| `--output PATH` | `-o` | Output report path. Default: reports/kevlar_aivss_report_<timestamp>.json. |
+| `--quiet` | `-q` | Suppress banner and colors. |
+| `--ci` | | CI mode: quiet + exit code based on severity. |
+| `--version` | | Show version and exit. |
+| `--help` | | Show help and exit. |
+
+### Exit Codes (CI Mode)
+
+| Code | Meaning |
+|------|---------|
+| 0 | No vulnerabilities found |
+| 1 | Medium/High vulnerabilities found |
+| 2 | Critical vulnerabilities found |
+| 130 | Interrupted (SIGINT) |
 
 ## Testing
 
