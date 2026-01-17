@@ -11,7 +11,9 @@ import signal
 import sys
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import click
 
 from kevlar.agents import MockCopilotAgent, RealLangChainAgent
 from kevlar.modules.critical.asi01_goal_hijack import GoalHijackOrchestrator
@@ -24,6 +26,8 @@ from kevlar.modules.high.asi07_inter_agent_comms import InterAgentOrchestrator
 from kevlar.modules.high.asi08_cascading_failures import CascadingOrchestrator
 from kevlar.modules.medium.asi09_human_trust import HumanTrustOrchestrator
 from kevlar.modules.medium.asi10_rogue_agents import RogueAgentOrchestrator
+
+__version__ = "1.1.0"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,6 +48,25 @@ COLORS = {
     "UNDERLINE": "\033[4m",
 }
 
+ALL_ASIS = [
+    ("ASI01", "Agent Goal Hijack"),
+    ("ASI02", "Tool Misuse and Exploitation"),
+    ("ASI03", "Identity and Privilege Abuse"),
+    ("ASI04", "Agentic Supply Chain Vulnerabilities"),
+    ("ASI05", "Unexpected Code Execution (RCE)"),
+    ("ASI06", "Memory and Context Poisoning"),
+    ("ASI07", "Insecure Inter-Agent Communication"),
+    ("ASI08", "Cascading Failures"),
+    ("ASI09", "Human-Agent Trust Exploitation"),
+    ("ASI10", "Rogue Agents"),
+]
+
+# Exit codes for CI mode
+EXIT_SUCCESS = 0
+EXIT_VULNS_FOUND = 1
+EXIT_CRITICAL_VULNS = 2
+EXIT_INTERRUPTED = 130
+
 
 class ShutdownHandler:
     """Handles graceful shutdown on SIGINT/SIGTERM."""
@@ -53,6 +76,8 @@ class ShutdownHandler:
         self.current_asi: Optional[str] = None
         self.results: Dict[str, Any] = {}
         self.agent_mode: Optional[str] = None
+        self.model_name: Optional[str] = None
+        self.quiet: bool = False
         self._original_sigint = None
         self._original_sigterm = None
 
@@ -73,37 +98,54 @@ class ShutdownHandler:
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
 
         if self.shutdown_requested:
-            print(
-                f"\n{COLORS['RED']}{COLORS['BOLD']}Force shutdown requested. Exiting immediately.{COLORS['RESET']}"
-            )
+            if not self.quiet:
+                print(
+                    f"\n{COLORS['RED']}{COLORS['BOLD']}Force shutdown requested. Exiting immediately.{COLORS['RESET']}"
+                )
             sys.exit(1)
 
         self.shutdown_requested = True
-        print(
-            f"\n{COLORS['YELLOW']}{COLORS['BOLD']}Shutdown requested ({signal_name}). "
-            f"Finishing current test...{COLORS['RESET']}"
-        )
-        print(
-            f"{COLORS['YELLOW']}Press Ctrl+C again to force quit.{COLORS['RESET']}"
-        )
+        if not self.quiet:
+            print(
+                f"\n{COLORS['YELLOW']}{COLORS['BOLD']}Shutdown requested ({signal_name}). "
+                f"Finishing current test...{COLORS['RESET']}"
+            )
+            print(
+                f"{COLORS['YELLOW']}Press Ctrl+C again to force quit.{COLORS['RESET']}"
+            )
 
-    def save_partial_results(self):
+    def save_partial_results(self, output_path: Optional[str] = None):
         """Save partial results if any tests were completed."""
         if self.results and self.agent_mode:
-            print(
-                f"\n{COLORS['CYAN']}Saving partial results...{COLORS['RESET']}"
+            if not self.quiet:
+                print(
+                    f"\n{COLORS['CYAN']}Saving partial results...{COLORS['RESET']}"
+                )
+            return generate_aivss_report(
+                self.results, self.agent_mode, self.model_name,
+                partial=True, output_path=output_path, quiet=self.quiet
             )
-            return generate_aivss_report(self.results, self.agent_mode, partial=True)
         return None
 
 
 shutdown_handler = ShutdownHandler()
 
 
-def print_banner():
+def get_colors(quiet: bool) -> Dict[str, str]:
+    """Return colors dict, empty strings if quiet mode."""
+    if quiet:
+        return {k: "" for k in COLORS}
+    return COLORS
+
+
+def print_banner(quiet: bool = False):
+    if quiet:
+        return
+
+    colors = get_colors(quiet)
     banner = f"""
 
-{COLORS["RED"]}
+{colors["RED"]}
      )            (            (                  )          )   *           (        )
   ( /(            )\\ )   (     )\\ )     (      ( /(   (   ( /( (  `    (     )\\ )  ( /(
   )\\())(   (   ( (()/(   )\\   (()/(   ( )\\ (   )\\())  )\\  )\\())\\))(   )\\   (()/(  )\\())
@@ -112,106 +154,125 @@ def print_banner():
 | |/ /| __\\ \\ / /| |   (_)_\\(_) _ \\   | _ ) __| \\| ((/ __| || |  \\/  (_)_\\(_) _ \\| |/ /
 | ' < | _| \\ V / | |__  / _ \\ |   /   | _ \\ _|| .` || (__| __ | |\\/| |/ _ \\ |   /  ' <
 |_|\\_\\|___| \\_/  |____|/_/ \\_\\|_|_\\   |___/___|_|\\_| \\___|_||_|_|  |_/_/ \\_\\|_|_\\ _|\\_\\
-                                                                                         {COLORS["RESET"]}
+                                                                                         {colors["RESET"]}
 
-{COLORS["WHITE"]}{COLORS["BOLD"]}Kevlar: OWASP Top 10 for Agentic Apps 2026 Benchmark{COLORS["RESET"]}
-{COLORS["CYAN"]}A Red Team Tool for AI Agent Security Testing{COLORS["RESET"]}
-{COLORS["YELLOW"]}Version 1.1 | MIT License | Author: toxy4ny{COLORS["RESET"]}
-{COLORS["WHITE"]}https://github.com/toxy4ny/kevlar-benchmark{COLORS["RESET"]}
+{colors["WHITE"]}{colors["BOLD"]}Kevlar: OWASP Top 10 for Agentic Apps 2026 Benchmark{colors["RESET"]}
+{colors["CYAN"]}A Red Team Tool for AI Agent Security Testing{colors["RESET"]}
+{colors["YELLOW"]}Version {__version__} | MIT License | Author: toxy4ny{colors["RESET"]}
+{colors["WHITE"]}https://github.com/toxy4ny/kevlar-benchmark{colors["RESET"]}
 """
     print(banner)
 
 
-def select_asis() -> List[str]:
-    asis = [
-        ("ASI01", "Agent Goal Hijack"),
-        ("ASI02", "Tool Misuse and Exploitation"),
-        ("ASI03", "Identity and Privilege Abuse"),
-        ("ASI04", "Agentic Supply Chain Vulnerabilities"),
-        ("ASI05", "Unexpected Code Execution (RCE)"),
-        ("ASI06", "Memory and Context Poisoning"),
-        ("ASI07", "Insecure Inter-Agent Communication"),
-        ("ASI08", "Cascading Failures"),
-        ("ASI09", "Human-Agent Trust Exploitation"),
-        ("ASI10", "Rogue Agents"),
-    ]
+def select_asis_interactive() -> List[str]:
+    """Interactive ASI selection menu."""
+    colors = get_colors(False)
 
-    print(f"\n{COLORS['CYAN']}{COLORS['BOLD']}Select ASI Tests:{COLORS['RESET']}")
+    print(f"\n{colors['CYAN']}{colors['BOLD']}Select ASI Tests:{colors['RESET']}")
     print(
-        f"{COLORS['WHITE']}Enter numbers separated by commas, or 'all' for all tests, 'custom' for manual selection.{COLORS['RESET']}"
+        f"{colors['WHITE']}Enter numbers separated by commas, or 'all' for all tests, 'custom' for manual selection.{colors['RESET']}"
     )
 
-    for i, (asi_id, description) in enumerate(asis, 1):
-        print(f"  {COLORS['GREEN']}{i}.{COLORS['RESET']} {asi_id}: {description}")
+    for i, (asi_id, description) in enumerate(ALL_ASIS, 1):
+        print(f"  {colors['GREEN']}{i}.{colors['RESET']} {asi_id}: {description}")
 
     choice = (
-        input(f"\n{COLORS['YELLOW']}Your choice: {COLORS['RESET']}").strip().lower()
+        input(f"\n{colors['YELLOW']}Your choice: {colors['RESET']}").strip().lower()
     )
 
     if choice == "all":
-        return [asi_id for asi_id, _ in asis]
+        return [asi_id for asi_id, _ in ALL_ASIS]
     elif choice == "custom":
         selected = []
         while True:
             try:
                 num = int(
                     input(
-                        f"{COLORS['YELLOW']}Enter ASI number (0 to finish): {COLORS['RESET']}"
+                        f"{colors['YELLOW']}Enter ASI number (0 to finish): {colors['RESET']}"
                     )
                 )
                 if num == 0:
                     break
-                if 1 <= num <= len(asis):
-                    selected.append(asis[num - 1][0])
+                if 1 <= num <= len(ALL_ASIS):
+                    selected.append(ALL_ASIS[num - 1][0])
                     print(
-                        f"{COLORS['GREEN']}Added {asis[num - 1][0]}{COLORS['RESET']}"
+                        f"{colors['GREEN']}Added {ALL_ASIS[num - 1][0]}{colors['RESET']}"
                     )
                 else:
-                    print(f"{COLORS['RED']}Invalid number{COLORS['RESET']}")
+                    print(f"{colors['RED']}Invalid number{colors['RESET']}")
             except ValueError:
-                print(f"{COLORS['RED']}Please enter a number{COLORS['RESET']}")
+                print(f"{colors['RED']}Please enter a number{colors['RESET']}")
         return selected
     else:
         try:
             nums = [int(x.strip()) for x in choice.split(",")]
-            return [asis[n - 1][0] for n in nums if 1 <= n <= len(asis)]
+            return [ALL_ASIS[n - 1][0] for n in nums if 1 <= n <= len(ALL_ASIS)]
         except Exception:
             print(
-                f"{COLORS['RED']}Invalid input. Defaulting to ASI01{COLORS['RESET']}"
+                f"{colors['RED']}Invalid input. Defaulting to ASI01{colors['RESET']}"
             )
             return ["ASI01"]
 
 
-def select_mode() -> str:
-    print(f"\n{COLORS['CYAN']}{COLORS['BOLD']}Select Agent Mode:{COLORS['RESET']}")
-    print(f"  {COLORS['GREEN']}1.{COLORS['RESET']} Mock Agent (Safe for learning)")
+def select_mode_interactive() -> str:
+    """Interactive agent mode selection."""
+    colors = get_colors(False)
+
+    print(f"\n{colors['CYAN']}{colors['BOLD']}Select Agent Mode:{colors['RESET']}")
+    print(f"  {colors['GREEN']}1.{colors['RESET']} Mock Agent (Safe for learning)")
     print(
-        f"  {COLORS['YELLOW']}2.{COLORS['RESET']} Real Agent (LangChain/AutoGen + Ollama)"
+        f"  {colors['YELLOW']}2.{colors['RESET']} Real Agent (LangChain/AutoGen + Ollama)"
     )
 
     while True:
-        choice = input(f"\n{COLORS['YELLOW']}Mode (1/2): {COLORS['RESET']}").strip()
+        choice = input(f"\n{colors['YELLOW']}Mode (1/2): {colors['RESET']}").strip()
         if choice == "1":
             return "mock"
         elif choice == "2":
             return "real"
         else:
-            print(f"{COLORS['RED']}Invalid choice{COLORS['RESET']}")
+            print(f"{colors['RED']}Invalid choice{colors['RESET']}")
 
 
-def create_agent(mode: str):
+def parse_asi_args(asi_args: Tuple[str, ...]) -> List[str]:
+    """Parse ASI arguments to list of ASI IDs."""
+    valid_asis = {asi_id for asi_id, _ in ALL_ASIS}
+    result = []
+
+    for arg in asi_args:
+        # Normalize to uppercase
+        asi = arg.upper()
+        if asi in valid_asis:
+            if asi not in result:
+                result.append(asi)
+        else:
+            raise click.BadParameter(f"Unknown ASI: {arg}. Valid: {', '.join(sorted(valid_asis))}")
+
+    return result
+
+
+def create_agent(mode: str, model: str = "llama3.1", quiet: bool = False):
+    """Create agent based on mode."""
+    colors = get_colors(quiet)
+
     if mode == "mock":
-        print(f"{COLORS['GREEN']}Using Mock Agent (safe mode){COLORS['RESET']}")
+        if not quiet:
+            print(f"{colors['GREEN']}Using Mock Agent (safe mode){colors['RESET']}")
         return MockCopilotAgent()
     else:
-        print(
-            f"{COLORS['YELLOW']}Initializing Real LangChain Agent...{COLORS['RESET']}"
-        )
-        return RealLangChainAgent(model_name="llama3.1")
+        if not quiet:
+            print(
+                f"{colors['YELLOW']}Initializing Real LangChain Agent (model: {model})...{colors['RESET']}"
+            )
+        return RealLangChainAgent(model_name=model)
 
 
-def run_asi_test(asi_id: str, agent, results: Dict[str, Any]):
-    print(f"\n{COLORS['BLUE']}{COLORS['BOLD']}Running {asi_id}...{COLORS['RESET']}")
+def run_asi_test(asi_id: str, agent, results: Dict[str, Any], quiet: bool = False):
+    """Run a single ASI test."""
+    colors = get_colors(quiet)
+
+    if not quiet:
+        print(f"\n{colors['BLUE']}{colors['BOLD']}Running {asi_id}...{colors['RESET']}")
 
     start_time = time.time()
 
@@ -279,31 +340,46 @@ def run_asi_test(asi_id: str, agent, results: Dict[str, Any]):
             "results": results_list,
         }
 
-        if vulnerable_count > 0:
-            print(
-                f"{COLORS['RED']}{COLORS['BOLD']}{vulnerable_count}/{total_count} vulnerabilities found in {asi_id} ({duration:.2f}s){COLORS['RESET']}"
-            )
-        else:
-            print(
-                f"{COLORS['GREEN']}{COLORS['BOLD']}No vulnerabilities found in {asi_id} ({duration:.2f}s){COLORS['RESET']}"
-            )
+        if not quiet:
+            if vulnerable_count > 0:
+                print(
+                    f"{colors['RED']}{colors['BOLD']}{vulnerable_count}/{total_count} vulnerabilities found in {asi_id} ({duration:.2f}s){colors['RESET']}"
+                )
+            else:
+                print(
+                    f"{colors['GREEN']}{colors['BOLD']}No vulnerabilities found in {asi_id} ({duration:.2f}s){colors['RESET']}"
+                )
 
     except Exception as e:
-        print(f"{COLORS['RED']}Error running {asi_id}: {e}{COLORS['RESET']}")
+        if not quiet:
+            print(f"{colors['RED']}Error running {asi_id}: {e}{colors['RESET']}")
         results[asi_id] = {"error": str(e), "duration": time.time() - start_time}
 
 
-def generate_aivss_report(results: Dict[str, Any], agent_mode: str, partial: bool = False):
+def generate_aivss_report(
+    results: Dict[str, Any],
+    agent_mode: str,
+    model_name: Optional[str] = None,
+    partial: bool = False,
+    output_path: Optional[str] = None,
+    quiet: bool = False,
+) -> str:
+    """Generate AIVSS report."""
+    colors = get_colors(quiet)
+
+    if model_name is None:
+        model_name = "llama3.1" if agent_mode == "real" else "MockCopilotAgent"
+
     report = {
         "aivss_version": "1.0",
         "benchmark": {
             "name": "Kevlar",
-            "version": "1.1",
+            "version": __version__,
             "url": "https://github.com/toxy4ny/kevlar-benchmark",
         },
         "agent": {
             "mode": agent_mode,
-            "model": "llama3.1" if agent_mode == "real" else "MockCopilotAgent",
+            "model": model_name if agent_mode == "real" else "MockCopilotAgent",
         },
         "scan": {
             "start_time": datetime.now().isoformat(),
@@ -360,84 +436,275 @@ def generate_aivss_report(results: Dict[str, Any], agent_mode: str, partial: boo
     report["scan"]["medium_vulnerabilities"] = medium_vulns
     report["scan"]["partial"] = partial
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    suffix = "_partial" if partial else ""
-    filename = f"reports/kevlar_aivss_report_{timestamp}{suffix}.json"
-    os.makedirs("reports", exist_ok=True)
+    if output_path:
+        filename = output_path
+        # Ensure parent directory exists
+        parent_dir = os.path.dirname(filename)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        suffix = "_partial" if partial else ""
+        filename = f"reports/kevlar_aivss_report_{timestamp}{suffix}.json"
+        os.makedirs("reports", exist_ok=True)
 
     with open(filename, "w") as f:
         json.dump(report, f, indent=2)
 
-    print(
-        f"\n{COLORS['CYAN']}{COLORS['BOLD']}Report generated: {filename}{COLORS['RESET']}"
-    )
-    print(
-        f"{COLORS['WHITE']}Total vulnerabilities: {total_vulns} (Critical: {critical_vulns}, High: {high_vulns}, Medium: {medium_vulns}){COLORS['RESET']}"
-    )
+    if not quiet:
+        print(
+            f"\n{colors['CYAN']}{colors['BOLD']}Report generated: {filename}{colors['RESET']}"
+        )
+        print(
+            f"{colors['WHITE']}Total vulnerabilities: {total_vulns} (Critical: {critical_vulns}, High: {high_vulns}, Medium: {medium_vulns}){colors['RESET']}"
+        )
 
     return filename
 
 
-def main():
-    """Main entry point for Kevlar CLI."""
-    shutdown_handler.install()
+def determine_exit_code(results: Dict[str, Any]) -> int:
+    """Determine exit code based on results for CI mode."""
+    has_critical = False
+    has_vulns = False
 
-    try:
-        print_banner()
+    for asi_id, result in results.items():
+        if "error" in result:
+            continue
 
-        selected_asis = select_asis()
-        print(
-            f"\n{COLORS['GREEN']}Selected ASI: {', '.join(selected_asis)}{COLORS['RESET']}"
-        )
+        if result.get("vulnerable_count", 0) > 0:
+            has_vulns = True
 
-        mode = select_mode()
-        shutdown_handler.agent_mode = mode
-        agent = create_agent(mode)
-
-        results = {}
-        shutdown_handler.results = results
-        print(
-            f"\n{COLORS['YELLOW']}{COLORS['BOLD']}Starting Kevlar Scan...{COLORS['RESET']}"
-        )
-
-        for asi_id in selected_asis:
-            if shutdown_handler.shutdown_requested:
-                print(
-                    f"\n{COLORS['YELLOW']}Skipping remaining tests due to shutdown request.{COLORS['RESET']}"
-                )
+        for finding in result.get("results", []):
+            if finding.get("severity") == "CRITICAL":
+                has_critical = True
                 break
 
-            shutdown_handler.current_asi = asi_id
-            run_asi_test(asi_id, agent, results)
+        if has_critical:
+            break
 
+    if has_critical:
+        return EXIT_CRITICAL_VULNS
+    elif has_vulns:
+        return EXIT_VULNS_FOUND
+    return EXIT_SUCCESS
+
+
+def run_interactive_mode():
+    """Run Kevlar in interactive mode."""
+    print_banner()
+
+    selected_asis = select_asis_interactive()
+    colors = get_colors(False)
+    print(
+        f"\n{colors['GREEN']}Selected ASI: {', '.join(selected_asis)}{colors['RESET']}"
+    )
+
+    mode = select_mode_interactive()
+    shutdown_handler.agent_mode = mode
+    shutdown_handler.model_name = "llama3.1" if mode == "real" else None
+    agent = create_agent(mode)
+
+    results = {}
+    shutdown_handler.results = results
+    print(
+        f"\n{colors['YELLOW']}{colors['BOLD']}Starting Kevlar Scan...{colors['RESET']}"
+    )
+
+    for asi_id in selected_asis:
         if shutdown_handler.shutdown_requested:
-            report_file = shutdown_handler.save_partial_results()
             print(
-                f"\n{COLORS['YELLOW']}{COLORS['BOLD']}Kevlar Scan Interrupted.{COLORS['RESET']}"
+                f"\n{colors['YELLOW']}Skipping remaining tests due to shutdown request.{colors['RESET']}"
+            )
+            break
+
+        shutdown_handler.current_asi = asi_id
+        run_asi_test(asi_id, agent, results)
+
+    if shutdown_handler.shutdown_requested:
+        report_file = shutdown_handler.save_partial_results()
+        print(
+            f"\n{colors['YELLOW']}{colors['BOLD']}Kevlar Scan Interrupted.{colors['RESET']}"
+        )
+        if report_file:
+            print(
+                f"{colors['WHITE']}Partial report saved to: {report_file}{colors['RESET']}"
+            )
+    else:
+        report_file = generate_aivss_report(results, mode, shutdown_handler.model_name)
+        print(
+            f"\n{colors['MAGENTA']}{colors['BOLD']}Kevlar Scan Complete!{colors['RESET']}"
+        )
+        print(f"{colors['WHITE']}Report saved to: {report_file}{colors['RESET']}")
+
+    print(
+        f"{colors['CYAN']}Thank you for using Kevlar - Red Team Tool for AI Agent Security{colors['RESET']}"
+    )
+    print(
+        f"{colors['WHITE']}Run 'kevlar' again to test more agents or different ASI combinations{colors['RESET']}"
+    )
+
+
+def run_noninteractive_mode(
+    asi_list: List[str],
+    mode: str,
+    model: str,
+    output: Optional[str],
+    quiet: bool,
+    ci: bool,
+) -> int:
+    """Run Kevlar in non-interactive mode. Returns exit code."""
+    colors = get_colors(quiet)
+
+    if not quiet:
+        print_banner()
+        print(f"\n{colors['GREEN']}Selected ASI: {', '.join(asi_list)}{colors['RESET']}")
+
+    shutdown_handler.agent_mode = mode
+    shutdown_handler.model_name = model if mode == "real" else None
+    shutdown_handler.quiet = quiet
+
+    agent = create_agent(mode, model, quiet)
+
+    results = {}
+    shutdown_handler.results = results
+
+    if not quiet:
+        print(
+            f"\n{colors['YELLOW']}{colors['BOLD']}Starting Kevlar Scan...{colors['RESET']}"
+        )
+
+    for asi_id in asi_list:
+        if shutdown_handler.shutdown_requested:
+            if not quiet:
+                print(
+                    f"\n{colors['YELLOW']}Skipping remaining tests due to shutdown request.{colors['RESET']}"
+                )
+            break
+
+        shutdown_handler.current_asi = asi_id
+        run_asi_test(asi_id, agent, results, quiet)
+
+    if shutdown_handler.shutdown_requested:
+        report_file = shutdown_handler.save_partial_results(output)
+        if not quiet:
+            print(
+                f"\n{colors['YELLOW']}{colors['BOLD']}Kevlar Scan Interrupted.{colors['RESET']}"
             )
             if report_file:
                 print(
-                    f"{COLORS['WHITE']}Partial report saved to: {report_file}{COLORS['RESET']}"
+                    f"{colors['WHITE']}Partial report saved to: {report_file}{colors['RESET']}"
                 )
-        else:
-            report_file = generate_aivss_report(results, mode)
-            print(
-                f"\n{COLORS['MAGENTA']}{COLORS['BOLD']}Kevlar Scan Complete!{COLORS['RESET']}"
-            )
-            print(f"{COLORS['WHITE']}Report saved to: {report_file}{COLORS['RESET']}")
+        return EXIT_INTERRUPTED
 
+    report_file = generate_aivss_report(
+        results, mode, shutdown_handler.model_name,
+        output_path=output, quiet=quiet
+    )
+
+    if not quiet:
         print(
-            f"{COLORS['CYAN']}Thank you for using Kevlar - Red Team Tool for AI Agent Security{COLORS['RESET']}"
+            f"\n{colors['MAGENTA']}{colors['BOLD']}Kevlar Scan Complete!{colors['RESET']}"
         )
-        print(
-            f"{COLORS['WHITE']}Run 'kevlar' again to test more agents or different ASI combinations{COLORS['RESET']}"
-        )
+        print(f"{colors['WHITE']}Report saved to: {report_file}{colors['RESET']}")
+
+    if ci:
+        return determine_exit_code(results)
+
+    return EXIT_SUCCESS
+
+
+@click.command()
+@click.option(
+    '--asi', '-a',
+    multiple=True,
+    help='ASI tests to run (e.g., ASI01, ASI05). Can be specified multiple times.'
+)
+@click.option(
+    '--all', 'run_all',
+    is_flag=True,
+    help='Run all ASI tests.'
+)
+@click.option(
+    '--mode', '-m',
+    type=click.Choice(['mock', 'real']),
+    default='mock',
+    help='Agent mode: mock (safe) or real (LangChain + Ollama).'
+)
+@click.option(
+    '--model',
+    default='llama3.1',
+    help='Model name for real agent (default: llama3.1).'
+)
+@click.option(
+    '--output', '-o',
+    type=click.Path(),
+    help='Output report path (default: reports/kevlar_aivss_report_<timestamp>.json).'
+)
+@click.option(
+    '--quiet', '-q',
+    is_flag=True,
+    help='Suppress banner and colors.'
+)
+@click.option(
+    '--ci',
+    is_flag=True,
+    help='CI mode: quiet + exit code based on severity (0=safe, 1=vulns, 2=critical).'
+)
+@click.version_option(version=__version__, prog_name='kevlar')
+def main(asi, run_all, mode, model, output, quiet, ci):
+    """Kevlar: OWASP Top 10 for Agentic Apps 2026 Benchmark.
+
+    Red Team Tool for AI Agent Security Testing.
+
+    Examples:
+
+    \b
+      # Interactive mode (default)
+      kevlar
+
+    \b
+      # Run specific ASI tests
+      kevlar --asi ASI01 --asi ASI05 --mode mock
+
+    \b
+      # Run all tests with real agent
+      kevlar --all --mode real --model llama3.1
+
+    \b
+      # CI mode with custom output
+      kevlar --all --ci --output report.json
+    """
+    shutdown_handler.install()
+
+    try:
+        # Determine if we're in non-interactive mode
+        has_cli_args = bool(asi) or run_all
+
+        if has_cli_args:
+            # Non-interactive mode
+            if ci:
+                quiet = True  # CI mode implies quiet
+
+            if run_all:
+                asi_list = [asi_id for asi_id, _ in ALL_ASIS]
+            else:
+                asi_list = parse_asi_args(asi)
+
+            if not asi_list:
+                raise click.UsageError("No ASI tests specified. Use --asi or --all.")
+
+            exit_code = run_noninteractive_mode(asi_list, mode, model, output, quiet, ci)
+            sys.exit(exit_code)
+        else:
+            # Interactive mode
+            run_interactive_mode()
 
     except KeyboardInterrupt:
+        colors = get_colors(quiet if 'quiet' in dir() else False)
         print(
-            f"\n{COLORS['YELLOW']}Interrupted during setup.{COLORS['RESET']}"
+            f"\n{colors['YELLOW']}Interrupted during setup.{colors['RESET']}"
         )
-        sys.exit(130)
+        sys.exit(EXIT_INTERRUPTED)
     finally:
         shutdown_handler.uninstall()
 
