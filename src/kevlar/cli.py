@@ -27,7 +27,7 @@ from kevlar.modules.high.asi08_cascading_failures import CascadingOrchestrator
 from kevlar.modules.medium.asi09_human_trust import HumanTrustOrchestrator
 from kevlar.modules.medium.asi10_rogue_agents import RogueAgentOrchestrator
 
-__version__ = "1.1.0"
+__version__ = "1.2"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -118,12 +118,14 @@ class ShutdownHandler:
         """Save partial results if any tests were completed."""
         if self.results and self.agent_mode:
             if not self.quiet:
-                print(
-                    f"\n{COLORS['CYAN']}Saving partial results...{COLORS['RESET']}"
-                )
+                print(f"\n{COLORS['CYAN']}Saving partial results...{COLORS['RESET']}")
             return generate_aivss_report(
-                self.results, self.agent_mode, self.model_name,
-                partial=True, output_path=output_path, quiet=self.quiet
+                self.results,
+                self.agent_mode,
+                self.model_name,
+                partial=True,
+                output_path=output_path,
+                quiet=self.quiet,
             )
         return None
 
@@ -208,9 +210,7 @@ def select_asis_interactive() -> List[str]:
             nums = [int(x.strip()) for x in choice.split(",")]
             return [ALL_ASIS[n - 1][0] for n in nums if 1 <= n <= len(ALL_ASIS)]
         except Exception:
-            print(
-                f"{colors['RED']}Invalid input. Defaulting to ASI01{colors['RESET']}"
-            )
+            print(f"{colors['RED']}Invalid input. Defaulting to ASI01{colors['RESET']}")
             return ["ASI01"]
 
 
@@ -246,7 +246,9 @@ def parse_asi_args(asi_args: Tuple[str, ...]) -> List[str]:
             if asi not in result:
                 result.append(asi)
         else:
-            raise click.BadParameter(f"Unknown ASI: {arg}. Valid: {', '.join(sorted(valid_asis))}")
+            raise click.BadParameter(
+                f"Unknown ASI: {arg}. Valid: {', '.join(sorted(valid_asis))}"
+            )
 
     return result
 
@@ -262,10 +264,11 @@ def create_agent(mode: str, model: str = "llama3.1", quiet: bool = False):
 
     # Real mode - check dependencies
     from kevlar.agents import check_real_agent_dependencies
+
     deps = check_real_agent_dependencies()
 
-    if not deps['available']:
-        missing_str = "\n  - ".join(deps['missing'])
+    if not deps["available"]:
+        missing_str = "\n  - ".join(deps["missing"])
         raise click.ClickException(
             f"Real agent mode requires:\n  - {missing_str}\n\n"
             "Use --mode mock for safe testing without external dependencies."
@@ -281,10 +284,13 @@ def create_agent(mode: str, model: str = "llama3.1", quiet: bool = False):
 def check_dependencies_and_exit(quiet: bool = False):
     """Check agent dependencies and exit with appropriate code."""
     from kevlar.agents import check_real_agent_dependencies
+
     colors = get_colors(quiet)
     deps = check_real_agent_dependencies()
 
-    print(f"\n{colors['CYAN']}{colors['BOLD']}Kevlar Dependency Check{colors['RESET']}\n")
+    print(
+        f"\n{colors['CYAN']}{colors['BOLD']}Kevlar Dependency Check{colors['RESET']}\n"
+    )
 
     def status(ok: bool) -> str:
         if ok:
@@ -295,12 +301,12 @@ def check_dependencies_and_exit(quiet: bool = False):
     print(f"  {status(deps['ollama'])} Ollama")
 
     print()
-    if deps['available']:
+    if deps["available"]:
         print(f"{colors['GREEN']}Real agent mode: available{colors['RESET']}")
         sys.exit(0)
     else:
         print(f"{colors['RED']}Real agent mode: NOT available{colors['RESET']}")
-        for m in deps['missing']:
+        for m in deps["missing"]:
             print(f"  {colors['YELLOW']}{m}{colors['RESET']}")
         sys.exit(1)
 
@@ -595,7 +601,9 @@ def run_noninteractive_mode(
 
     if not quiet:
         print_banner()
-        print(f"\n{colors['GREEN']}Selected ASI: {', '.join(asi_list)}{colors['RESET']}")
+        print(
+            f"\n{colors['GREEN']}Selected ASI: {', '.join(asi_list)}{colors['RESET']}"
+        )
 
     shutdown_handler.agent_mode = mode
     shutdown_handler.model_name = model if mode == "real" else None
@@ -635,8 +643,7 @@ def run_noninteractive_mode(
         return EXIT_INTERRUPTED
 
     report_file = generate_aivss_report(
-        results, mode, shutdown_handler.model_name,
-        output_path=output, quiet=quiet
+        results, mode, shutdown_handler.model_name, output_path=output, quiet=quiet
     )
 
     if not quiet:
@@ -653,47 +660,36 @@ def run_noninteractive_mode(
 
 @click.command()
 @click.option(
-    '--asi', '-a',
+    "--asi",
+    "-a",
     multiple=True,
-    help='ASI tests to run (e.g., ASI01, ASI05). Can be specified multiple times.'
+    help="ASI tests to run (e.g., ASI01, ASI05). Can be specified multiple times.",
+)
+@click.option("--all", "run_all", is_flag=True, help="Run all ASI tests.")
+@click.option(
+    "--mode",
+    "-m",
+    type=click.Choice(["mock", "real"]),
+    default="mock",
+    help="Agent mode: mock (safe) or real (LangChain + Ollama).",
 )
 @click.option(
-    '--all', 'run_all',
-    is_flag=True,
-    help='Run all ASI tests.'
+    "--model", default="llama3.1", help="Model name for real agent (default: llama3.1)."
 )
 @click.option(
-    '--mode', '-m',
-    type=click.Choice(['mock', 'real']),
-    default='mock',
-    help='Agent mode: mock (safe) or real (LangChain + Ollama).'
-)
-@click.option(
-    '--model',
-    default='llama3.1',
-    help='Model name for real agent (default: llama3.1).'
-)
-@click.option(
-    '--output', '-o',
+    "--output",
+    "-o",
     type=click.Path(),
-    help='Output report path (default: reports/kevlar_aivss_report_<timestamp>.json).'
+    help="Output report path (default: reports/kevlar_aivss_report_<timestamp>.json).",
 )
+@click.option("--quiet", "-q", is_flag=True, help="Suppress banner and colors.")
 @click.option(
-    '--quiet', '-q',
+    "--ci",
     is_flag=True,
-    help='Suppress banner and colors.'
+    help="CI mode: quiet + exit code based on severity (0=safe, 1=vulns, 2=critical).",
 )
-@click.option(
-    '--ci',
-    is_flag=True,
-    help='CI mode: quiet + exit code based on severity (0=safe, 1=vulns, 2=critical).'
-)
-@click.option(
-    '--check',
-    is_flag=True,
-    help='Check agent dependencies and exit.'
-)
-@click.version_option(version=__version__, prog_name='kevlar')
+@click.option("--check", is_flag=True, help="Check agent dependencies and exit.")
+@click.version_option(version=__version__, prog_name="kevlar")
 def main(asi, run_all, mode, model, output, quiet, ci, check):
     """Kevlar: OWASP Top 10 for Agentic Apps 2026 Benchmark.
 
@@ -741,17 +737,17 @@ def main(asi, run_all, mode, model, output, quiet, ci, check):
             if not asi_list:
                 raise click.UsageError("No ASI tests specified. Use --asi or --all.")
 
-            exit_code = run_noninteractive_mode(asi_list, mode, model, output, quiet, ci)
+            exit_code = run_noninteractive_mode(
+                asi_list, mode, model, output, quiet, ci
+            )
             sys.exit(exit_code)
         else:
             # Interactive mode
             run_interactive_mode()
 
     except KeyboardInterrupt:
-        colors = get_colors(quiet if 'quiet' in dir() else False)
-        print(
-            f"\n{colors['YELLOW']}Interrupted during setup.{colors['RESET']}"
-        )
+        colors = get_colors(quiet if "quiet" in dir() else False)
+        print(f"\n{colors['YELLOW']}Interrupted during setup.{colors['RESET']}")
         sys.exit(EXIT_INTERRUPTED)
     finally:
         shutdown_handler.uninstall()

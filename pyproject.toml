@@ -7,7 +7,7 @@ packages = ["src/kevlar"]
 
 [project]
 name = "kevlar-benchmark"
-version = "1.1.0"
+version = "1.2"
 description = "Red team security benchmark for testing AI agents against OWASP Top 10 for Agentic Applications"
 readme = "README.md"
 requires-python = ">=3.14"

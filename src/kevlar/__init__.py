@@ -9,10 +9,10 @@ if sys.version_info >= (3, 14):
         "ignore",
         message="Core Pydantic V1 functionality isn't compatible with Python 3.14",
         category=UserWarning,
-        module="langchain_core._api.deprecation"
+        module="langchain_core._api.deprecation",
     )
 
 from kevlar.core.types import SessionLog
 
 __all__ = ["SessionLog"]
-__version__ = "1.1.0"
+__version__ = "1.2"
