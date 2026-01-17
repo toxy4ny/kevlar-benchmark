@@ -2,18 +2,13 @@
 Shared fixtures for Kevlar Benchmark tests.
 """
 
-import sys
-import os
 import pytest
 from unittest.mock import MagicMock, patch
 from dataclasses import dataclass, field
 from typing import Any
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from kevlar_types import SessionLog
-from local_agent import MockCopilotAgent
+from kevlar.core.types import SessionLog
+from kevlar.agents import MockCopilotAgent
 
 
 # ============================================================================
@@ -35,7 +30,7 @@ def mock_langchain_agent():
         'langchain.agents': MagicMock(),
         'langchain_core.prompts': MagicMock(),
     }):
-        from real_agent_adapter import RealLangChainAgent
+        from kevlar.agents import RealLangChainAgent
         agent = RealLangChainAgent(model_name="test-model")
         return agent
 
