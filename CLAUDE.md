@@ -1,6 +1,4 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# Kevlar
 
 ## Project Overview
 
@@ -8,22 +6,12 @@ Kevlar is a red team security benchmark for testing AI agents against the OWASP 
 
 ## Critical Workflow Rules
 
-### Issue Tracking with bd (beads)
-
-- **ALWAYS** use bd for task and issue tracking: `bd onboard` для начала
-- Перед завершением сессии: создать issues для незавершённой работы, закрыть завершённые задачи, синхронизировать с git
-- **MANDATORY**: работа НЕ завершена пока не выполнен `git push` (см. AGENTS.md для полного workflow)
-
 ### Git Conventions
 
 - Commit messages пишутся на **русском языке**
 - Группировать изменения в разные коммиты по смыслу
 - **НЕ добавлять** "Generated with Claude Code" в commit messages
 - Main branch для PR: `main`
-
-### Documentation Tools
-
-- **ALWAYS** используйте Ref (mcp__Ref__ref_search_documentation) при работе с библиотеками для проверки актуальной документации
 
 ## Commands
 
