@@ -252,19 +252,57 @@ def parse_asi_args(asi_args: Tuple[str, ...]) -> List[str]:
 
 
 def create_agent(mode: str, model: str = "llama3.1", quiet: bool = False):
-    """Create agent based on mode."""
+    """Create agent based on mode. Fails if real mode deps unavailable."""
     colors = get_colors(quiet)
 
     if mode == "mock":
         if not quiet:
             print(f"{colors['GREEN']}Using Mock Agent (safe mode){colors['RESET']}")
         return MockCopilotAgent()
+
+    # Real mode - check dependencies
+    from kevlar.agents import check_real_agent_dependencies
+    deps = check_real_agent_dependencies()
+
+    if not deps['available']:
+        missing_str = "\n  - ".join(deps['missing'])
+        raise click.ClickException(
+            f"Real agent mode requires:\n  - {missing_str}\n\n"
+            "Use --mode mock for safe testing without external dependencies."
+        )
+
+    if not quiet:
+        print(
+            f"{colors['YELLOW']}Initializing Real LangChain Agent (model: {model})...{colors['RESET']}"
+        )
+    return RealLangChainAgent(model_name=model)
+
+
+def check_dependencies_and_exit(quiet: bool = False):
+    """Check agent dependencies and exit with appropriate code."""
+    from kevlar.agents import check_real_agent_dependencies
+    colors = get_colors(quiet)
+    deps = check_real_agent_dependencies()
+
+    print(f"\n{colors['CYAN']}{colors['BOLD']}Kevlar Dependency Check{colors['RESET']}\n")
+
+    def status(ok: bool) -> str:
+        if ok:
+            return f"{colors['GREEN']}[OK]{colors['RESET']}"
+        return f"{colors['RED']}[MISSING]{colors['RESET']}"
+
+    print(f"  {status(deps['langchain'])} LangChain")
+    print(f"  {status(deps['ollama'])} Ollama")
+
+    print()
+    if deps['available']:
+        print(f"{colors['GREEN']}Real agent mode: available{colors['RESET']}")
+        sys.exit(0)
     else:
-        if not quiet:
-            print(
-                f"{colors['YELLOW']}Initializing Real LangChain Agent (model: {model})...{colors['RESET']}"
-            )
-        return RealLangChainAgent(model_name=model)
+        print(f"{colors['RED']}Real agent mode: NOT available{colors['RESET']}")
+        for m in deps['missing']:
+            print(f"  {colors['YELLOW']}{m}{colors['RESET']}")
+        sys.exit(1)
 
 
 def run_asi_test(asi_id: str, agent, results: Dict[str, Any], quiet: bool = False):
@@ -650,8 +688,13 @@ def run_noninteractive_mode(
     is_flag=True,
     help='CI mode: quiet + exit code based on severity (0=safe, 1=vulns, 2=critical).'
 )
+@click.option(
+    '--check',
+    is_flag=True,
+    help='Check agent dependencies and exit.'
+)
 @click.version_option(version=__version__, prog_name='kevlar')
-def main(asi, run_all, mode, model, output, quiet, ci):
+def main(asi, run_all, mode, model, output, quiet, ci, check):
     """Kevlar: OWASP Top 10 for Agentic Apps 2026 Benchmark.
 
     Red Team Tool for AI Agent Security Testing.
@@ -674,6 +717,11 @@ def main(asi, run_all, mode, model, output, quiet, ci):
       # CI mode with custom output
       kevlar --all --ci --output report.json
     """
+    # Handle --check before anything else
+    if check:
+        check_dependencies_and_exit(quiet)
+        return
+
     shutdown_handler.install()
 
     try:

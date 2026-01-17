@@ -111,7 +111,13 @@ class TestAgentSelection:
             'langchain_core.tools': MagicMock(),
             'langchain.agents': MagicMock(),
             'langchain_core.prompts': MagicMock(),
-        }):
+        }), patch('kevlar.agents.check_real_agent_dependencies') as mock_deps:
+            mock_deps.return_value = {
+                'langchain': True,
+                'ollama': True,
+                'available': True,
+                'missing': []
+            }
             agent = create_agent("real")
             assert agent is not None
 
