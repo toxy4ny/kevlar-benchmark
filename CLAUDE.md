@@ -21,19 +21,19 @@ uv sync
 
 # Run full benchmark (interactive mode)
 uv run kevlar
-# Or: uv run python -m kevlar.cli
+# Or: uv run -m kevlar.cli
 
 # Run individual ASI test scripts
-uv run python scripts/run_asi01.py   # Agent Goal Hijack
-uv run python scripts/run_asi02.py   # Tool Misuse
-uv run python scripts/run_asi03.py   # Identity Abuse
-uv run python scripts/run_asi04.py   # Supply Chain
-uv run python scripts/run_asi05.py   # RCE
-uv run python scripts/run_asi06.py   # Memory Poisoning
-uv run python scripts/run_asi07.py   # Inter-Agent Comms
-uv run python scripts/run_asi08.py   # Cascading Failures
-uv run python scripts/run_asi09.py   # Human Trust
-uv run python scripts/run_asi10.py   # Rogue Agents
+uv run scripts/run_asi01.py   # Agent Goal Hijack
+uv run scripts/run_asi02.py   # Tool Misuse
+uv run scripts/run_asi03.py   # Identity Abuse
+uv run scripts/run_asi04.py   # Supply Chain
+uv run scripts/run_asi05.py   # RCE
+uv run scripts/run_asi06.py   # Memory Poisoning
+uv run scripts/run_asi07.py   # Inter-Agent Comms
+uv run scripts/run_asi08.py   # Cascading Failures
+uv run scripts/run_asi09.py   # Human Trust
+uv run scripts/run_asi10.py   # Rogue Agents
 
 # Run tests
 uv run pytest tests/                    # All tests
