@@ -50,41 +50,35 @@ def mock_langchain_only():
 @pytest.fixture
 def mock_no_frameworks():
     """Mock with no frameworks available."""
-    # Remove all framework modules
-    modules_to_mock = {
-        'langchain_ollama': None,
-        'langchain_core.tools': None,
-        'langchain.agents': None,
-        'langchain_core.prompts': None,
-        'autogen': None,
-    }
-
-    # Create import errors for framework modules
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
-
-    def mock_import(name, *args, **kwargs):
-        if name in ['langchain_ollama', 'langchain_core.tools', 'langchain.agents',
-                    'langchain_core.prompts', 'autogen']:
-            raise ImportError(f"No module named '{name}'")
-        return original_import(name, *args, **kwargs)
+    # Remove kevlar and framework modules before patching
+    modules_to_remove = [
+        'langchain_asi04_adapter',
+        'kevlar.agents.adapters.asi04',
+        'kevlar.agents.adapters',
+        'kevlar.agents',
+        'kevlar',
+    ]
+    for mod in modules_to_remove:
+        if mod in sys.modules:
+            del sys.modules[mod]
 
     with patch.dict('sys.modules', {
-        'langchain_ollama': None,
-        'langchain_core.tools': None,
-        'langchain.agents': None,
-        'langchain_core.prompts': None,
+        'langchain_ollama': MagicMock(),
+        'langchain_core.tools': MagicMock(tool=make_tool_decorator()),
+        'langchain.agents': MagicMock(),
+        'langchain_core.prompts': MagicMock(
+            ChatPromptTemplate=MagicMock(from_messages=MagicMock())
+        ),
         'autogen': None,
     }):
-        if 'langchain_asi04_adapter' in sys.modules:
-            del sys.modules['langchain_asi04_adapter']
+        # Import the module fresh
+        from kevlar.agents.adapters.asi04 import LangChainASI04Agent
+        # Import the module to set flags
+        import kevlar.agents.adapters.asi04 as asi04_module
+        asi04_module.LANGCHAIN_AVAILABLE = False
+        asi04_module.AUTOGEN_AVAILABLE = False
 
-        # Import with mocked unavailable modules
-        import langchain_asi04_adapter
-        # Force LANGCHAIN_AVAILABLE and AUTOGEN_AVAILABLE to False
-        langchain_asi04_adapter.LANGCHAIN_AVAILABLE = False
-        langchain_asi04_adapter.AUTOGEN_AVAILABLE = False
-
-        yield langchain_asi04_adapter.LangChainASI04Agent
+        yield LangChainASI04Agent
 
 
 class TestLangChainASI04AgentInit:
