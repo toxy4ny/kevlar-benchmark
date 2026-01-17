@@ -50,8 +50,8 @@ Kevlar automates adversarial testing of all **10 OWASP ASI risks**, ordered by r
 | 🛑 6 | ASI06  | Memory & Context Poisoning         | Medium      | Gemini Memory Corruption  | ✅ Implemented |
 | 🛑 7 | ASI07  | Insecure Inter-Agent Comms         | Medium      | Agent-in-the-Middle       | ✅ Implemented |
 | 🛑 8 | ASI08  | Cascading Failures                 | Medium      | Financial Trading Collapse| ✅ Implemented |
-| 🧠 9 | ASI09  | Human-Agent Trust Exploitation     | Medium      | Fake Explainability       | 🚧 Planned    |
-| 👁️ 10| ASI10  | Rogue Agents                       | Medium      | Self-Replicating Agents   | 🚧 Planned    |
+| 🧠 9 | ASI09  | Human-Agent Trust Exploitation     | Medium      | Fake Explainability       | ✅ Implemented |
+| 👁️ 10| ASI10  | Rogue Agents                       | Medium      | Self-Replicating Agents   | ✅ Implemented |
 
 > 🔍 **Source**: Appendix D, OWASP ASI 2026 — 20+ real-world exploits from May–Oct 2025
 
