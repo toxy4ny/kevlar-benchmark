@@ -61,7 +61,7 @@ class RCEOrchestrator:
                 "name": "Toolchain RCE",
                 "exploit": ToolchainRCE,
                 "detector": ToolchainRCEDetector,
-                "input_attr": "tool_chain",
+                "input_attr": "tool_calls",
             },
             {
                 "name": "Memory Eval RCE",
