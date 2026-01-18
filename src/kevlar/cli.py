@@ -253,7 +253,7 @@ def parse_asi_args(asi_args: Tuple[str, ...]) -> List[str]:
     return result
 
 
-def create_agent(mode: str, model: str = "llama3.1", quiet: bool = False):
+def create_agent(mode: str, model: str = "llama3.1:8b", quiet: bool = False):
     """Create agent based on mode. Fails if real mode deps unavailable."""
     colors = get_colors(quiet)
 
@@ -265,7 +265,7 @@ def create_agent(mode: str, model: str = "llama3.1", quiet: bool = False):
     # Real mode - check dependencies
     from kevlar.agents import check_real_agent_dependencies
 
-    deps = check_real_agent_dependencies()
+    deps = check_real_agent_dependencies(model=model)
 
     if not deps["available"]:
         missing_str = "\n  - ".join(deps["missing"])
@@ -412,7 +412,7 @@ def generate_aivss_report(
     colors = get_colors(quiet)
 
     if model_name is None:
-        model_name = "llama3.1" if agent_mode == "real" else "MockCopilotAgent"
+        model_name = "llama3.1:8b" if agent_mode == "real" else "MockCopilotAgent"
 
     report = {
         "aivss_version": "1.0",
@@ -545,7 +545,7 @@ def run_interactive_mode():
 
     mode = select_mode_interactive()
     shutdown_handler.agent_mode = mode
-    shutdown_handler.model_name = "llama3.1" if mode == "real" else None
+    shutdown_handler.model_name = "llama3.1:8b" if mode == "real" else None
     agent = create_agent(mode)
 
     results = {}
@@ -674,7 +674,7 @@ def run_noninteractive_mode(
     help="Agent mode: mock (safe) or real (LangChain + Ollama).",
 )
 @click.option(
-    "--model", default="llama3.1", help="Model name for real agent (default: llama3.1)."
+    "--model", default="llama3.1:8b", help="Model name for real agent (default: llama3.1:8b)."
 )
 @click.option(
     "--output",
@@ -707,7 +707,7 @@ def main(asi, run_all, mode, model, output, quiet, ci, check):
 
     \b
       # Run all tests with real agent
-      kevlar --all --mode real --model llama3.1
+      kevlar --all --mode real --model llama3.1:8b
 
     \b
       # CI mode with custom output
