@@ -7,6 +7,8 @@ import json
 import os
 from unittest.mock import patch, MagicMock
 
+from click.testing import CliRunner
+
 
 class TestRunnerCLIFlow:
     """Integration tests for CLI runner flow."""
@@ -101,16 +103,17 @@ class TestAgentSelection:
         assert isinstance(agent, MockCopilotAgent)
 
     def test_real_agent_selection(self):
-        """Test creating real agent with mocked dependencies."""
+        """Test creating real agent with mocked dependency check."""
         from kevlar.cli import create_agent
 
-        with patch.dict('sys.modules', {
-            'langchain_ollama': MagicMock(),
-            'langchain_core.tools': MagicMock(),
-            'langchain.agents': MagicMock(),
-            'langchain_core.prompts': MagicMock(),
-        }):
-            agent = create_agent("real")
+        with patch('kevlar.agents.check_real_agent_dependencies') as mock_deps:
+            mock_deps.return_value = {
+                'langchain': True,
+                'ollama': True,
+                'available': True,
+                'missing': []
+            }
+            agent = create_agent("real", quiet=True)
             assert agent is not None
 
 
@@ -206,3 +209,286 @@ class TestMultipleRuns:
         assert os.path.exists(report1)
         assert os.path.exists(report2)
         assert report1 != report2
+
+
+class TestClickCLI:
+    """Tests for click-based CLI interface."""
+
+    def test_help_option(self):
+        """Test --help option displays usage info."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(main, ['--help'])
+
+        assert result.exit_code == 0
+        assert 'Kevlar' in result.output
+        assert '--asi' in result.output
+        assert '--all' in result.output
+        assert '--mode' in result.output
+        assert '--model' in result.output
+        assert '--output' in result.output
+        assert '--quiet' in result.output
+        assert '--ci' in result.output
+
+    def test_version_option(self):
+        """Test --version option displays version."""
+        from kevlar.cli import main, __version__
+
+        runner = CliRunner()
+        result = runner.invoke(main, ['--version'])
+
+        assert result.exit_code == 0
+        assert __version__ in result.output
+
+    def test_single_asi_argument(self, tmp_path):
+        """Test running with single --asi argument."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(main, ['--asi', 'ASI01', '--mode', 'mock', '--quiet'])
+
+            assert result.exit_code == 0
+
+    def test_multiple_asi_arguments(self, tmp_path):
+        """Test running with multiple --asi arguments."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(main, ['--asi', 'ASI01', '--asi', 'ASI02', '--mode', 'mock', '--quiet'])
+
+            assert result.exit_code == 0
+
+    def test_all_flag(self, tmp_path):
+        """Test running with --all flag."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(main, ['--all', '--mode', 'mock', '--quiet'])
+
+            assert result.exit_code == 0
+
+    def test_invalid_asi_argument(self):
+        """Test error on invalid ASI argument."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(main, ['--asi', 'ASI99', '--mode', 'mock'])
+
+        assert result.exit_code != 0
+        assert 'Unknown ASI' in result.output or 'ASI99' in result.output
+
+    def test_case_insensitive_asi(self, tmp_path):
+        """Test ASI arguments are case-insensitive."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(main, ['--asi', 'asi01', '--mode', 'mock', '--quiet'])
+
+            assert result.exit_code == 0
+
+    def test_custom_output_path(self, tmp_path):
+        """Test custom output path."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            output_file = 'custom_report.json'
+            result = runner.invoke(main, ['--asi', 'ASI01', '--mode', 'mock', '--quiet', '--output', output_file])
+
+            assert result.exit_code == 0
+            assert os.path.exists(output_file)
+
+            with open(output_file) as f:
+                report = json.load(f)
+            assert 'ASI01' in report['scan']['tested_asis']
+
+    def test_quiet_mode_no_banner(self, tmp_path):
+        """Test quiet mode suppresses banner."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(main, ['--asi', 'ASI01', '--mode', 'mock', '--quiet'])
+
+            # Banner contains "KEVLAR" ASCII art
+            assert 'KEVLAR' not in result.output.upper() or result.output == ''
+
+    def test_mode_choice_validation(self):
+        """Test mode option only accepts mock/real."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(main, ['--asi', 'ASI01', '--mode', 'invalid'])
+
+        assert result.exit_code != 0
+        assert 'Invalid value' in result.output or 'invalid' in result.output.lower()
+
+
+class TestCIModeExitCodes:
+    """Tests for CI mode exit codes."""
+
+    def test_ci_mode_exit_code_success(self, tmp_path):
+        """Test CI mode returns 0 when no vulnerabilities."""
+        from kevlar.cli import main, determine_exit_code
+
+        # Test determine_exit_code directly with no vulns
+        results = {
+            "ASI01": {
+                "vulnerable_count": 0,
+                "total_count": 4,
+                "duration": 1.0,
+                "results": [
+                    {"scenario": "A", "vulnerable": False, "severity": "NONE"},
+                ],
+            },
+        }
+        assert determine_exit_code(results) == 0
+
+    def test_ci_mode_exit_code_vulns_found(self):
+        """Test CI mode returns 1 when medium/high vulnerabilities found."""
+        from kevlar.cli import determine_exit_code, EXIT_VULNS_FOUND
+
+        results = {
+            "ASI01": {
+                "vulnerable_count": 1,
+                "total_count": 4,
+                "duration": 1.0,
+                "results": [
+                    {"scenario": "A", "vulnerable": True, "severity": "HIGH"},
+                ],
+            },
+        }
+        assert determine_exit_code(results) == EXIT_VULNS_FOUND
+
+    def test_ci_mode_exit_code_critical(self):
+        """Test CI mode returns 2 when critical vulnerabilities found."""
+        from kevlar.cli import determine_exit_code, EXIT_CRITICAL_VULNS
+
+        results = {
+            "ASI01": {
+                "vulnerable_count": 1,
+                "total_count": 4,
+                "duration": 1.0,
+                "results": [
+                    {"scenario": "A", "vulnerable": True, "severity": "CRITICAL"},
+                ],
+            },
+        }
+        assert determine_exit_code(results) == EXIT_CRITICAL_VULNS
+
+    def test_ci_implies_quiet(self, tmp_path):
+        """Test that --ci flag implies quiet mode."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(main, ['--asi', 'ASI01', '--mode', 'mock', '--ci'])
+
+            # CI mode should be quiet - no banner
+            assert 'KEVLAR' not in result.output.upper() or result.output == ''
+
+
+class TestParseASIArgs:
+    """Tests for ASI argument parsing."""
+
+    def test_parse_single_asi(self):
+        """Test parsing single ASI argument."""
+        from kevlar.cli import parse_asi_args
+
+        result = parse_asi_args(('ASI01',))
+        assert result == ['ASI01']
+
+    def test_parse_multiple_asis(self):
+        """Test parsing multiple ASI arguments."""
+        from kevlar.cli import parse_asi_args
+
+        result = parse_asi_args(('ASI01', 'ASI05', 'ASI10'))
+        assert result == ['ASI01', 'ASI05', 'ASI10']
+
+    def test_parse_lowercase_asi(self):
+        """Test parsing lowercase ASI arguments."""
+        from kevlar.cli import parse_asi_args
+
+        result = parse_asi_args(('asi01', 'asi05'))
+        assert result == ['ASI01', 'ASI05']
+
+    def test_parse_mixed_case_asi(self):
+        """Test parsing mixed case ASI arguments."""
+        from kevlar.cli import parse_asi_args
+
+        result = parse_asi_args(('Asi01', 'ASI05', 'asi10'))
+        assert result == ['ASI01', 'ASI05', 'ASI10']
+
+    def test_parse_deduplicate_asis(self):
+        """Test that duplicate ASIs are removed."""
+        from kevlar.cli import parse_asi_args
+
+        result = parse_asi_args(('ASI01', 'ASI01', 'asi01'))
+        assert result == ['ASI01']
+
+    def test_parse_invalid_asi_raises(self):
+        """Test that invalid ASI raises BadParameter."""
+        from kevlar.cli import parse_asi_args
+        import click
+
+        with pytest.raises(click.BadParameter) as exc_info:
+            parse_asi_args(('ASI99',))
+
+        assert 'Unknown ASI' in str(exc_info.value)
+
+
+class TestGetColors:
+    """Tests for color helper function."""
+
+    def test_get_colors_normal(self):
+        """Test colors are returned in normal mode."""
+        from kevlar.cli import get_colors, COLORS
+
+        colors = get_colors(quiet=False)
+        assert colors == COLORS
+        assert colors['RED'] == '\033[91m'
+
+    def test_get_colors_quiet(self):
+        """Test colors are empty strings in quiet mode."""
+        from kevlar.cli import get_colors
+
+        colors = get_colors(quiet=True)
+        assert all(v == '' for v in colors.values())
+
+
+class TestNonInteractiveWithOutput:
+    """Tests for non-interactive mode with custom output."""
+
+    def test_output_directory_created(self, tmp_path):
+        """Test output directory is created if it doesn't exist."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            output_file = 'subdir/report.json'
+            result = runner.invoke(main, ['--asi', 'ASI01', '--mode', 'mock', '--quiet', '--output', output_file])
+
+            assert result.exit_code == 0
+            assert os.path.exists(output_file)
+
+    def test_report_contains_model_info(self, tmp_path):
+        """Test report contains correct model info."""
+        from kevlar.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            output_file = 'report.json'
+            result = runner.invoke(main, ['--asi', 'ASI01', '--mode', 'mock', '--quiet', '--output', output_file])
+
+            assert result.exit_code == 0
+
+            with open(output_file) as f:
+                report = json.load(f)
+
+            assert report['agent']['mode'] == 'mock'
+            assert report['agent']['model'] == 'MockCopilotAgent'

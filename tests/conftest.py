@@ -23,11 +23,21 @@ def mock_agent():
 
 @pytest.fixture
 def mock_langchain_agent():
-    """Provide a mocked RealLangChainAgent without actual LangChain dependencies."""
+    """Provide a RealLangChainAgent for testing.
+
+    Uses actual LangChain if available, otherwise mocks dependencies.
+    """
+    from kevlar.agents.langchain import LANGCHAIN_AVAILABLE
+
+    if LANGCHAIN_AVAILABLE:
+        from kevlar.agents import RealLangChainAgent
+        return RealLangChainAgent(model_name="test-model")
+
+    # Fallback to mocking if LangChain not installed
     with patch.dict('sys.modules', {
         'langchain_ollama': MagicMock(),
         'langchain_core.tools': MagicMock(),
-        'langchain.agents': MagicMock(),
+        'langchain_classic.agents': MagicMock(),
         'langchain_core.prompts': MagicMock(),
     }):
         from kevlar.agents import RealLangChainAgent

@@ -21,19 +21,29 @@ uv sync
 
 # Run full benchmark (interactive mode)
 uv run kevlar
-# Or: uv run python -m kevlar.cli
+
+# Non-interactive mode with CLI arguments
+uv run kevlar --asi ASI01 --asi ASI05 --mode mock
+uv run kevlar --all --mode real --model llama3.1
+uv run kevlar --asi ASI01 --output report.json --quiet
+
+# CI mode (quiet + exit codes)
+uv run kevlar --all --ci
+
+# Show help
+uv run kevlar --help
 
 # Run individual ASI test scripts
-uv run python scripts/run_asi01.py   # Agent Goal Hijack
-uv run python scripts/run_asi02.py   # Tool Misuse
-uv run python scripts/run_asi03.py   # Identity Abuse
-uv run python scripts/run_asi04.py   # Supply Chain
-uv run python scripts/run_asi05.py   # RCE
-uv run python scripts/run_asi06.py   # Memory Poisoning
-uv run python scripts/run_asi07.py   # Inter-Agent Comms
-uv run python scripts/run_asi08.py   # Cascading Failures
-uv run python scripts/run_asi09.py   # Human Trust
-uv run python scripts/run_asi10.py   # Rogue Agents
+uv run scripts/run_asi01.py   # Agent Goal Hijack
+uv run scripts/run_asi02.py   # Tool Misuse
+uv run scripts/run_asi03.py   # Identity Abuse
+uv run scripts/run_asi04.py   # Supply Chain
+uv run scripts/run_asi05.py   # RCE
+uv run scripts/run_asi06.py   # Memory Poisoning
+uv run scripts/run_asi07.py   # Inter-Agent Comms
+uv run scripts/run_asi08.py   # Cascading Failures
+uv run scripts/run_asi09.py   # Human Trust
+uv run scripts/run_asi10.py   # Rogue Agents
 
 # Run tests
 uv run pytest tests/                    # All tests
@@ -41,6 +51,40 @@ uv run pytest tests/unit/               # Unit tests only
 uv run pytest tests/integration/        # Integration tests only
 uv run pytest tests/ -v --tb=short      # Verbose with short traceback
 ```
+
+## CLI Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--asi TEXT` | `-a` | ASI tests to run (e.g., ASI01, ASI05). Can be specified multiple times. |
+| `--all` | | Run all ASI tests. |
+| `--mode [mock\|real]` | `-m` | Agent mode: mock (safe) or real (LangChain + Ollama). Default: mock. |
+| `--model TEXT` | | Model name for real agent. Default: llama3.1. |
+| `--output PATH` | `-o` | Output report path. Default: reports/kevlar_aivss_report_<timestamp>.json. |
+| `--quiet` | `-q` | Suppress banner and colors. |
+| `--ci` | | CI mode: quiet + exit code based on severity. |
+| `--check` | | Check agent dependencies (LangChain, Ollama) and exit. |
+| `--version` | | Show version and exit. |
+| `--help` | | Show help and exit. |
+
+### Dependency Check
+
+Real agent mode (`--mode real`) requires LangChain and Ollama. Use `--check` to verify:
+
+```bash
+uv run kevlar --check
+```
+
+If dependencies are missing, `--mode real` will fail with a clear error message suggesting `--mode mock`.
+
+### Exit Codes (CI Mode)
+
+| Code | Meaning |
+|------|---------|
+| 0 | No vulnerabilities found |
+| 1 | Medium/High vulnerabilities found |
+| 2 | Critical vulnerabilities found |
+| 130 | Interrupted (SIGINT) |
 
 ## Testing
 

@@ -61,7 +61,7 @@ class RCEOrchestrator:
                 "name": "Toolchain RCE",
                 "exploit": ToolchainRCE,
                 "detector": ToolchainRCEDetector,
-                "input_attr": "tool_chain",
+                "input_attr": "tool_calls",
             },
             {
                 "name": "Memory Eval RCE",
@@ -102,6 +102,11 @@ class RCEOrchestrator:
                     "severity": "CRITICAL" if evidence else "NONE",
                     "evidence": evidence or "No RCE indicators detected",
                 }
+                # Add payload and attack_chain for vulnerable findings
+                if evidence is not None and hasattr(exploit, "get_payload"):
+                    result["payload"] = exploit.get_payload()
+                if evidence is not None and hasattr(exploit, "get_attack_chain"):
+                    result["attack_chain"] = exploit.get_attack_chain()
                 self.results.append(result)
 
                 if result["severity"] == "CRITICAL" and self.config.get(

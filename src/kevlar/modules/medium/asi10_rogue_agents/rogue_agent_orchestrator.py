@@ -44,6 +44,11 @@ class RogueAgentOrchestrator:
                     "severity": "MEDIUM" if evidence else "NONE",
                     "evidence": evidence or "No rogue agent behavior detected",
                 }
+                # Add payload and attack_chain for vulnerable findings
+                if evidence is not None and hasattr(attack, "get_payload"):
+                    result["payload"] = attack.get_payload()
+                if evidence is not None and hasattr(attack, "get_attack_chain"):
+                    result["attack_chain"] = attack.get_attack_chain()
                 self.results.append(result)
                 if result["severity"] == "MEDIUM" and self.config.get(
                     "auto_stop", False
