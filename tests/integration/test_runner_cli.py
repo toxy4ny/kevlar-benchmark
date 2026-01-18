@@ -103,22 +103,17 @@ class TestAgentSelection:
         assert isinstance(agent, MockCopilotAgent)
 
     def test_real_agent_selection(self):
-        """Test creating real agent with mocked dependencies."""
+        """Test creating real agent with mocked dependency check."""
         from kevlar.cli import create_agent
 
-        with patch.dict('sys.modules', {
-            'langchain_ollama': MagicMock(),
-            'langchain_core.tools': MagicMock(),
-            'langchain.agents': MagicMock(),
-            'langchain_core.prompts': MagicMock(),
-        }), patch('kevlar.agents.check_real_agent_dependencies') as mock_deps:
+        with patch('kevlar.agents.check_real_agent_dependencies') as mock_deps:
             mock_deps.return_value = {
                 'langchain': True,
                 'ollama': True,
                 'available': True,
                 'missing': []
             }
-            agent = create_agent("real")
+            agent = create_agent("real", quiet=True)
             assert agent is not None
 
 

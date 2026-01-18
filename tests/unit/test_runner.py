@@ -47,71 +47,71 @@ class TestPrintBanner:
 
 
 class TestSelectAsis:
-    """Tests for select_asis function."""
+    """Tests for select_asis_interactive function."""
 
     def test_select_all_asis(self, monkeypatch):
         """Test selecting all ASIs."""
-        from kevlar.cli import select_asis
+        from kevlar.cli import select_asis_interactive
         monkeypatch.setattr('builtins.input', lambda _: 'all')
-        result = select_asis()
+        result = select_asis_interactive()
         assert len(result) == 10
         assert "ASI01" in result
         assert "ASI10" in result
 
     def test_select_single_asi(self, monkeypatch):
         """Test selecting single ASI by number."""
-        from kevlar.cli import select_asis
+        from kevlar.cli import select_asis_interactive
         monkeypatch.setattr('builtins.input', lambda _: '1')
-        result = select_asis()
+        result = select_asis_interactive()
         assert result == ["ASI01"]
 
     def test_select_multiple_asis(self, monkeypatch):
         """Test selecting multiple ASIs."""
-        from kevlar.cli import select_asis
+        from kevlar.cli import select_asis_interactive
         monkeypatch.setattr('builtins.input', lambda _: '1,2,3')
-        result = select_asis()
+        result = select_asis_interactive()
         assert result == ["ASI01", "ASI02", "ASI03"]
 
     def test_select_custom_asis(self, monkeypatch):
         """Test custom ASI selection."""
-        from kevlar.cli import select_asis
+        from kevlar.cli import select_asis_interactive
         inputs = iter(['custom', '1', '5', '0'])
         monkeypatch.setattr('builtins.input', lambda _: next(inputs))
-        result = select_asis()
+        result = select_asis_interactive()
         assert "ASI01" in result
         assert "ASI05" in result
 
     def test_invalid_input_defaults_to_asi01(self, monkeypatch):
         """Test invalid input defaults to ASI01."""
-        from kevlar.cli import select_asis
+        from kevlar.cli import select_asis_interactive
         monkeypatch.setattr('builtins.input', lambda _: 'invalid')
-        result = select_asis()
+        result = select_asis_interactive()
         assert result == ["ASI01"]
 
 
 class TestSelectMode:
-    """Tests for select_mode function."""
+    """Tests for select_mode_interactive function."""
 
     def test_select_mock_mode(self, monkeypatch):
         """Test selecting mock mode."""
-        from kevlar.cli import select_mode
+        from kevlar.cli import select_mode_interactive
         monkeypatch.setattr('builtins.input', lambda _: '1')
-        result = select_mode()
+        result = select_mode_interactive()
         assert result == "mock"
 
     def test_select_real_mode(self, monkeypatch):
         """Test selecting real mode."""
-        from kevlar.cli import select_mode
+        from kevlar.cli import select_mode_interactive
         monkeypatch.setattr('builtins.input', lambda _: '2')
-        result = select_mode()
+        result = select_mode_interactive()
         assert result == "real"
 
     def test_invalid_mode_retries(self, monkeypatch):
         """Test invalid mode selection retries."""
-        from kevlar.cli import select_mode
+        from kevlar.cli import select_mode_interactive
         inputs = iter(['invalid', '1'])
         monkeypatch.setattr('builtins.input', lambda _: next(inputs))
-        result = select_mode()
+        result = select_mode_interactive()
         assert result == "mock"
 
 
@@ -128,13 +128,14 @@ class TestCreateAgent:
     def test_create_real_agent(self):
         """Test creating real agent."""
         from kevlar.cli import create_agent
-        with patch.dict('sys.modules', {
-            'langchain_ollama': MagicMock(),
-            'langchain_core.tools': MagicMock(),
-            'langchain.agents': MagicMock(),
-            'langchain_core.prompts': MagicMock(),
-        }):
-            agent = create_agent("real")
+        with patch('kevlar.agents.check_real_agent_dependencies') as mock_deps:
+            mock_deps.return_value = {
+                'langchain': True,
+                'ollama': True,
+                'available': True,
+                'missing': []
+            }
+            agent = create_agent("real", quiet=True)
             assert agent is not None
 
 

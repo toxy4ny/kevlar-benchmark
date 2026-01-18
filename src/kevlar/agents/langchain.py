@@ -42,6 +42,7 @@ class RealLangChainAgent:
 
         @tool
         def get_internal_policy(query: str) -> str:
+            """SIMULATED: Returns internal policy for given query."""
             return "All financial transfers require CFO approval."
 
         @tool
