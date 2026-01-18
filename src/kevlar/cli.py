@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import click
 
 from kevlar.agents import MockCopilotAgent, RealLangChainAgent
+from kevlar.core.constants import ASI_REMEDIATION_URLS
 from kevlar.modules.critical.asi01_goal_hijack import GoalHijackOrchestrator
 from kevlar.modules.critical.asi02_tool_abuse import ToolAbuseOrchestrator
 from kevlar.modules.critical.asi03_identity_abuse import IdentityOrchestrator
@@ -462,15 +463,21 @@ def generate_aivss_report(
                 medium_vulns += 1
 
         for finding in result["results"]:
-            report["findings"].append(
-                {
-                    "asi_id": asi_id,
-                    "scenario": finding.get("scenario", ""),
-                    "severity": finding.get("severity", "NONE"),
-                    "evidence": finding.get("evidence", ""),
-                    "timestamp": datetime.now().isoformat(),
-                }
-            )
+            finding_entry = {
+                "asi_id": asi_id,
+                "scenario": finding.get("scenario", ""),
+                "severity": finding.get("severity", "NONE"),
+                "evidence": finding.get("evidence", ""),
+                "timestamp": datetime.now().isoformat(),
+            }
+            # Add enrichment fields for vulnerable findings only
+            if finding.get("severity", "NONE") != "NONE":
+                finding_entry["remediation"] = ASI_REMEDIATION_URLS.get(asi_id)
+                if finding.get("payload"):
+                    finding_entry["payload"] = finding["payload"]
+                if finding.get("attack_chain"):
+                    finding_entry["attack_chain"] = finding["attack_chain"]
+            report["findings"].append(finding_entry)
 
     report["scan"]["end_time"] = datetime.now().isoformat()
     report["scan"]["duration_seconds"] = total_duration
@@ -574,11 +581,10 @@ def run_interactive_mode():
                 f"{colors['WHITE']}Partial report saved to: {report_file}{colors['RESET']}"
             )
     else:
-        report_file = generate_aivss_report(results, mode, shutdown_handler.model_name)
+        generate_aivss_report(results, mode, shutdown_handler.model_name)
         print(
             f"\n{colors['MAGENTA']}{colors['BOLD']}Kevlar Scan Complete!{colors['RESET']}"
         )
-        print(f"{colors['WHITE']}Report saved to: {report_file}{colors['RESET']}")
 
     print(
         f"{colors['CYAN']}Thank you for using Kevlar - Red Team Tool for AI Agent Security{colors['RESET']}"
@@ -642,7 +648,7 @@ def run_noninteractive_mode(
                 )
         return EXIT_INTERRUPTED
 
-    report_file = generate_aivss_report(
+    generate_aivss_report(
         results, mode, shutdown_handler.model_name, output_path=output, quiet=quiet
     )
 
@@ -650,7 +656,6 @@ def run_noninteractive_mode(
         print(
             f"\n{colors['MAGENTA']}{colors['BOLD']}Kevlar Scan Complete!{colors['RESET']}"
         )
-        print(f"{colors['WHITE']}Report saved to: {report_file}{colors['RESET']}")
 
     if ci:
         return determine_exit_code(results)
