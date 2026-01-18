@@ -1,5 +1,7 @@
 # 🔒 Kevlar: OWASP Top 10 for Agentic Apps 2026 Benchmark
 
+# together with respected people POXEK AI (https://github.com/szybnev) and COPYLEFTDEV (https://github.com/copyleftdev)
+
 > **Full-coverage red team framework** for AI agent security testing  
 > Based on [OWASP Top 10 for Agentic Applications (2026)](https://owasp.org/www-project-top-10-for-large-language-model-applications/)  
 > ✅ Licensed under **CC BY-SA 4.0** | ✅ For **authorized red teaming only**
