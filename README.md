@@ -283,4 +283,4 @@ You are free to **share and adapt** - even commercially - as long as you:
 2. **Indicate if changes were made**
 3. **Distribute under same license (ShareAlike)**
 
-Copyright 2025 - [toxy4ny](https://github.com/toxy4ny) | Part of the **Kevlar Offensive AI Security Suite**
+Copyright 2026 - [toxy4ny](https://github.com/toxy4ny) | Part of the **Kevlar Offensive AI Security Suite**
