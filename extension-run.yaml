@@ -1,0 +1,26 @@
+==
+owasp_asi:
+  enabled: true          
+  models:
+    - llama3.1:8b      
+
+
+ext_attacks:
+  enabled: true
+  attacks:
+    - poetry_local
+    - reprompt_copilot_leak
+  settings:
+    poetry_local:
+      rewriter_model: deepseek-r1:1.5b   
+      temperature: 0.7
+    reprompt_copilot_leak:
+      target_model: llama3.1:8b         
+      embed_model:  llama3.1:8b          
+      enable_multi_turn: true
+      max_turns: 3
+
+
+ollama:
+  base_url: http://localhost:11434
+  timeout: 120
